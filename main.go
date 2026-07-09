@@ -75,10 +75,10 @@ func signIn(token string) (string, error) {
 	}
 
 	switch msg {
-	case "签到成功", "已经签到过了":
+	case "签到成功", "今日已签到":
 		return msg, nil
 	default:
-		return "", fmt.Errorf("签到失败: %s", msg)
+		return "", fmt.Errorf(msg)
 	}
 }
 
