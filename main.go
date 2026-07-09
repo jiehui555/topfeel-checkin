@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -20,35 +21,23 @@ const (
 	secCHUA   = `"Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"`
 )
 
-func main() {
-	if err := godotenv.Load(); err != nil {
-		fmt.Printf("警告: 未找到 .env 文件或加载失败: %v\n", err)
-	}
-
-	token := os.Getenv("TOPFEEL_TOKEN")
-	if token == "" {
-		fmt.Println("错误: 未设置 TOPFEEL_TOKEN 环境变量")
-		os.Exit(1)
-	}
-
+func signIn(token string) error {
 	now := time.Now().UnixMilli()
 	newTime := now + int64(rand.Intn(4)+3)*1000
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"oldtime": now,
 		"newtime": newTime,
 	}
 
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
-		fmt.Printf("序列化请求体失败: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("序列化请求体失败: %w", err)
 	}
 
 	req, err := http.NewRequest("POST", signInURL, bytes.NewReader(bodyBytes))
 	if err != nil {
-		fmt.Printf("创建请求失败: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("创建请求失败: %w", err)
 	}
 
 	req.Header.Set("Referer", referer)
@@ -62,41 +51,71 @@ func main() {
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Printf("网络请求失败: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("网络请求失败: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Printf("读取响应失败: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("读取响应失败: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		fmt.Printf("HTTP 状态码异常 %d: %s\n", resp.StatusCode, string(respBody))
-		os.Exit(1)
+		return fmt.Errorf("HTTP 状态码异常 %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	var result map[string]interface{}
+	var result map[string]any
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		fmt.Printf("JSON 解析失败: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("JSON 解析失败: %w", err)
 	}
 
 	msg, ok := result["msg"].(string)
 	if !ok {
-		fmt.Printf("签到结果: %v\n", result)
-		os.Exit(1)
+		return fmt.Errorf("签到结果: %v", result)
 	}
 
 	switch msg {
 	case "签到成功":
-		fmt.Println("签到成功")
+		return nil
 	case "已经签到过了":
-		fmt.Println("今日已签到")
+		return fmt.Errorf("今日已签到")
 	default:
-		fmt.Printf("签到失败: %s\n", msg)
+		return fmt.Errorf("签到失败: %s", msg)
+	}
+}
+
+func main() {
+	if err := godotenv.Load(); err != nil {
+		fmt.Printf("警告: 未找到 .env 文件或加载失败: %v\n", err)
+	}
+
+	tokensStr := os.Getenv("TOPFEEL_TOKEN")
+	if tokensStr == "" {
+		fmt.Println("错误: 未设置 TOPFEEL_TOKEN 环境变量")
 		os.Exit(1)
 	}
+
+	tokens := strings.Split(tokensStr, ",")
+	successCount := 0
+	failCount := 0
+
+	for i, token := range tokens {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			continue
+		}
+
+		accountID := fmt.Sprintf("账号%d", i+1)
+		fmt.Printf("正在为 %s 签到...\n", accountID)
+
+		if err := signIn(token); err != nil {
+			fmt.Printf("%s 签到失败: %v\n", accountID, err)
+			failCount++
+		} else {
+			fmt.Printf("%s 签到成功\n", accountID)
+			successCount++
+		}
+	}
+
+	fmt.Printf("\n签到完成: 成功 %d 个, 失败 %d 个\n", successCount, failCount)
 }
