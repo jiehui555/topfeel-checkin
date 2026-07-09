@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"math/rand"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/robfig/cron/v3"
 )
 
 const (
@@ -75,22 +77,18 @@ func signIn(token string) (string, error) {
 	}
 
 	switch msg {
-	case "签到成功", "今日已签到":
+	case "签到成功", "已经签到过了":
 		return msg, nil
 	default:
-		return "", fmt.Errorf(msg)
+		return "", fmt.Errorf("签到失败: %s", msg)
 	}
 }
 
-func main() {
-	if err := godotenv.Load(); err != nil {
-		fmt.Printf("警告: 未找到 .env 文件或加载失败: %v\n", err)
-	}
-
+func doSignIn() {
 	tokensStr := os.Getenv("TOPFEEL_TOKEN")
 	if tokensStr == "" {
 		fmt.Println("错误: 未设置 TOPFEEL_TOKEN 环境变量")
-		os.Exit(1)
+		return
 	}
 
 	tokens := strings.Split(tokensStr, ",")
@@ -117,4 +115,35 @@ func main() {
 	}
 
 	fmt.Printf("\n签到完成: 成功 %d 个, 失败 %d 个\n", successCount, failCount)
+}
+
+func main() {
+	once := flag.Bool("once", false, "只执行一次签到后退出")
+	flag.Parse()
+
+	if err := godotenv.Load(); err != nil {
+		fmt.Printf("警告: 未找到 .env 文件或加载失败: %v\n", err)
+	}
+
+	if *once {
+		doSignIn()
+		return
+	}
+
+	fmt.Println("启动每日签到定时任务，每天 08:00 执行")
+
+	c := cron.New(cron.WithLocation(func() *time.Location {
+		loc, err := time.LoadLocation("Asia/Shanghai")
+		if err != nil {
+			fmt.Printf("加载时区失败: %v，使用本地时间\n", err)
+			return time.Local
+		}
+		return loc
+	}()))
+
+	c.AddFunc("0 8 * * *", doSignIn)
+
+	c.Start()
+
+	select {}
 }
