@@ -121,9 +121,7 @@ func main() {
 	once := flag.Bool("once", false, "只执行一次签到后退出")
 	flag.Parse()
 
-	if err := godotenv.Load(); err != nil {
-		fmt.Printf("警告: 未找到 .env 文件或加载失败: %v\n", err)
-	}
+	_ = godotenv.Load()
 
 	if *once {
 		doSignIn()
