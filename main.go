@@ -21,7 +21,7 @@ const (
 	secCHUA   = `"Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"`
 )
 
-func signIn(token string) error {
+func signIn(token string) (string, error) {
 	now := time.Now().UnixMilli()
 	newTime := now + int64(rand.Intn(4)+3)*1000
 
@@ -32,12 +32,12 @@ func signIn(token string) error {
 
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
-		return fmt.Errorf("序列化请求体失败: %w", err)
+		return "", fmt.Errorf("序列化请求体失败: %w", err)
 	}
 
 	req, err := http.NewRequest("POST", signInURL, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return fmt.Errorf("创建请求失败: %w", err)
+		return "", fmt.Errorf("创建请求失败: %w", err)
 	}
 
 	req.Header.Set("Referer", referer)
@@ -51,36 +51,34 @@ func signIn(token string) error {
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("网络请求失败: %w", err)
+		return "", fmt.Errorf("网络请求失败: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("读取响应失败: %w", err)
+		return "", fmt.Errorf("读取响应失败: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP 状态码异常 %d: %s", resp.StatusCode, string(respBody))
+		return "", fmt.Errorf("HTTP 状态码异常 %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	var result map[string]any
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return fmt.Errorf("JSON 解析失败: %w", err)
+		return "", fmt.Errorf("JSON 解析失败: %w", err)
 	}
 
 	msg, ok := result["msg"].(string)
 	if !ok {
-		return fmt.Errorf("签到结果: %v", result)
+		return "", fmt.Errorf("签到结果: %v", result)
 	}
 
 	switch msg {
-	case "签到成功":
-		return nil
-	case "已经签到过了":
-		return fmt.Errorf("今日已签到")
+	case "签到成功", "已经签到过了":
+		return msg, nil
 	default:
-		return fmt.Errorf("签到失败: %s", msg)
+		return "", fmt.Errorf("签到失败: %s", msg)
 	}
 }
 
@@ -108,11 +106,12 @@ func main() {
 		accountID := fmt.Sprintf("账号%d", i+1)
 		fmt.Printf("正在为 %s 签到...\n", accountID)
 
-		if err := signIn(token); err != nil {
+		msg, err := signIn(token)
+		if err != nil {
 			fmt.Printf("%s 签到失败: %v\n", accountID, err)
 			failCount++
 		} else {
-			fmt.Printf("%s 签到成功\n", accountID)
+			fmt.Printf("%s %s\n", accountID, msg)
 			successCount++
 		}
 	}
