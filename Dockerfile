@@ -10,6 +10,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o topfeel-checkin .
 
 FROM library/alpine:3.20
 
+RUN apk add --no-cache tzdata
+
 WORKDIR /app
 
 COPY --from=builder /app/topfeel-checkin .
